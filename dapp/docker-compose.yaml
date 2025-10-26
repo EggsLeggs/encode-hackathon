@@ -1,0 +1,11 @@
+version: '3.8'
+
+services:
+  dapp:
+    build: .
+    ports:
+      - "${DAPP_PORT:-3000}:80"
+    environment:
+      - NODE_ENV=production
+    restart: unless-stopped
+    container_name: concordium-dapp

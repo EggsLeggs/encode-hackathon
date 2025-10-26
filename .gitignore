@@ -111,3 +111,5 @@ concordium-out/
 **/target/
 **/Cargo.lock
 ui/
+gallery/
+nft-demo/

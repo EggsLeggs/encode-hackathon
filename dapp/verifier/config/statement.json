@@ -1,0 +1,10 @@
+[
+  {
+    "type": "RevealAttribute",
+    "attributeTag": "firstName"
+  },
+  {
+    "type": "RevealAttribute", 
+    "attributeTag": "lastName"
+  }
+]

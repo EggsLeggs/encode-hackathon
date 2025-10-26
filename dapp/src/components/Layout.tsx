@@ -1,17 +1,20 @@
 import React from 'react';
 import { Link, Outlet, useLocation } from 'react-router-dom';
-import { Shield, Calendar, BookOpen, UserCheck, Monitor } from 'lucide-react';
+import { Shield, Calendar, BookOpen } from 'lucide-react';
 import type { WalletConnectionProps } from '@concordium/react-components';
 import { WalletButton } from './WalletButton';
+import { ContractAddressButton } from './ContractAddressButton';
 
 export const Layout: React.FC<WalletConnectionProps> = (props) => {
   const location = useLocation();
 
   const navigation = [
     { name: 'Register for Exam', href: '/register', icon: Calendar },
-    { name: 'Take Exam', href: '/exam', icon: BookOpen },
-    { name: 'Become a Proctor', href: '/become-proctor', icon: UserCheck },
-    { name: 'Proctor Exam', href: '/proctor', icon: Monitor },
+    // { name: 'Take Exam', href: '/exam', icon: BookOpen }, // Hidden for demo
+    { name: 'Take Exam', href: '/mock-exam', icon: BookOpen }, // Mock exam disguised as real exam
+    // Temporarily commented out to reduce scope
+    // { name: 'Become a Proctor', href: '/become-proctor', icon: UserCheck },
+    // { name: 'Proctor Exam', href: '/proctor', icon: Monitor },
   ];
 
   return (
@@ -25,7 +28,10 @@ export const Layout: React.FC<WalletConnectionProps> = (props) => {
               Proctora.
             </h1>
           </div>
-          <WalletButton {...props} />
+          <div className="flex items-center gap-3">
+            <ContractAddressButton />
+            <WalletButton {...props} />
+          </div>
         </div>
       </header>
 

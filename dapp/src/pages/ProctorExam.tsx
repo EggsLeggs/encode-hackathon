@@ -1,8 +1,10 @@
-import React, { useState } from 'react';
-import { Monitor, Users, Clock, AlertTriangle, CheckCircle, Eye } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Monitor, Users, Clock, AlertTriangle, CheckCircle, Eye, RefreshCw } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { useWalletConnection } from '../lib/wallet';
 import { useProctorStatus } from './BecomeProctor';
+import { useContract } from '../lib/useContract';
+import { toast } from 'sonner';
 import type { WalletConnectionProps } from '@concordium/react-components';
 
 const mockActiveExams = [
@@ -44,9 +46,89 @@ const mockStudents = [
 
 export const ProctorExam: React.FC<WalletConnectionProps> = (props) => {
   const { account } = useWalletConnection(props);
+  const { contract, isReady, error: contractError } = useContract();
   const { isProctor } = useProctorStatus();
   const [selectedExam, setSelectedExam] = useState<number | null>(null);
   const [monitoringView, setMonitoringView] = useState<'overview' | 'students'>('overview');
+  const [proctorSessions, setProctorSessions] = useState<number[]>([]);
+  const [exams, setExams] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [examResults, setExamResults] = useState<{ [examId: number]: { passed: boolean; submitted: boolean } }>({});
+
+  // Load proctor sessions from contract
+  useEffect(() => {
+    const loadProctorSessions = async () => {
+      if (!contract || !account || !isReady) return;
+
+      try {
+        setIsLoading(true);
+        const sessions = await contract.getProctorSessions(account);
+        setProctorSessions(sessions);
+
+        // Load exam details for each session
+        const examDetails = await Promise.all(
+          sessions.map(async (examId) => {
+            const exam = await contract.getExam(examId);
+            return exam;
+          })
+        );
+
+        setExams(examDetails.filter(exam => exam !== null));
+      } catch (error) {
+        console.error('Error loading proctor sessions:', error);
+        toast.error('Failed to load proctor sessions');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadProctorSessions();
+  }, [contract, account, isReady]);
+
+  const handleSubmitResults = async (examId: number, passed: boolean) => {
+    if (!contract || !isReady) {
+      toast.error('Contract not ready');
+      return;
+    }
+
+    try {
+      toast.info('Submitting exam results...');
+      await contract.submitExamResults(examId, passed);
+      setExamResults(prev => ({
+        ...prev,
+        [examId]: { passed, submitted: true }
+      }));
+      toast.success('Exam results submitted successfully!');
+    } catch (error) {
+      console.error('Error submitting results:', error);
+      toast.error(`Failed to submit results: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  };
+
+  const refreshSessions = async () => {
+    if (!contract || !account || !isReady) return;
+
+    try {
+      setIsLoading(true);
+      const sessions = await contract.getProctorSessions(account);
+      setProctorSessions(sessions);
+
+      const examDetails = await Promise.all(
+        sessions.map(async (examId) => {
+          const exam = await contract.getExam(examId);
+          return exam;
+        })
+      );
+
+      setExams(examDetails.filter(exam => exam !== null));
+      toast.success('Sessions refreshed');
+    } catch (error) {
+      console.error('Error refreshing sessions:', error);
+      toast.error('Failed to refresh sessions');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   if (!account) {
     return (
@@ -55,6 +137,20 @@ export const ProctorExam: React.FC<WalletConnectionProps> = (props) => {
           <AlertTriangle className="w-16 h-16 text-yellow-500 mx-auto mb-4" />
           <h2 className="text-2xl font-bold text-gray-900 mb-4">Wallet Required</h2>
           <p className="text-gray-500">Please connect your Concordium wallet to access proctor features.</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isReady) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-purple-50 to-blue-50 flex items-center justify-center">
+        <div className="text-center">
+          <AlertTriangle className="w-16 h-16 text-yellow-500 mx-auto mb-4" />
+          <h2 className="text-2xl font-bold text-gray-900 mb-4">Contract Not Ready</h2>
+          <p className="text-gray-500">
+            {contractError ? `Error: ${contractError}` : 'Please set a valid contract address to access proctor features.'}
+          </p>
         </div>
       </div>
     );
@@ -75,7 +171,7 @@ export const ProctorExam: React.FC<WalletConnectionProps> = (props) => {
     );
   }
 
-  const selectedExamData = selectedExam ? mockActiveExams.find(exam => exam.id === selectedExam) : null;
+  const selectedExamData = selectedExam ? exams.find(exam => exam.id === selectedExam) : null;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 to-blue-50">
@@ -91,6 +187,16 @@ export const ProctorExam: React.FC<WalletConnectionProps> = (props) => {
           <p className="text-xl mb-6 text-site-foreground font-custom max-w-2xl mx-auto">
             Monitor active exams and ensure academic integrity with blockchain verification.
           </p>
+          <Button
+            onClick={refreshSessions}
+            disabled={isLoading}
+            variant="outline"
+            size="sm"
+            className="mb-4"
+          >
+            <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+            Refresh Sessions
+          </Button>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -103,46 +209,69 @@ export const ProctorExam: React.FC<WalletConnectionProps> = (props) => {
               </h2>
               
               <div className="space-y-4">
-                {mockActiveExams.map((exam) => (
-                  <div
-                    key={exam.id}
-                    className={`p-4 rounded-lg border cursor-pointer transition-all ${
-                      selectedExam === exam.id
-                        ? 'border-primary bg-primary/10'
-                        : 'border-gray-200 hover:border-gray-300'
-                    }`}
-                    onClick={() => setSelectedExam(exam.id)}
-                  >
-                    <div className="flex items-center justify-between mb-2">
-                      <h3 className="font-medium text-gray-900">{exam.title}</h3>
-                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                        exam.status === 'active' 
-                          ? 'bg-green-100 text-green-800'
-                          : 'bg-gray-100 text-gray-800'
-                      }`}>
-                        {exam.status}
-                      </span>
-                    </div>
-                    
-                    <div className="flex items-center gap-4 text-sm text-gray-500">
-                      <div className="flex items-center gap-1">
-                        <Users className="w-4 h-4" />
-                        <span>{exam.studentCount} students</span>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <Clock className="w-4 h-4" />
-                        <span>{exam.timeRemaining} min left</span>
-                      </div>
-                    </div>
-                    
-                    {exam.alerts > 0 && (
-                      <div className="flex items-center gap-1 mt-2 text-red-600">
-                        <AlertTriangle className="w-4 h-4" />
-                        <span className="text-sm">{exam.alerts} alert(s)</span>
-                      </div>
-                    )}
+                {isLoading ? (
+                  <div className="text-center py-8">
+                    <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2" />
+                    <p className="text-sm text-gray-500">Loading sessions...</p>
                   </div>
-                ))}
+                ) : exams.length === 0 ? (
+                  <div className="text-center py-8">
+                    <Monitor className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                    <p className="text-gray-500">No active proctor sessions</p>
+                    <p className="text-sm text-gray-400 mt-1">Join an exam as a proctor to see it here</p>
+                  </div>
+                ) : (
+                  exams.map((exam) => (
+                    <div
+                      key={exam.id}
+                      className={`p-4 rounded-lg border cursor-pointer transition-all ${
+                        selectedExam === exam.id
+                          ? 'border-primary bg-primary/10'
+                          : 'border-gray-200 hover:border-gray-300'
+                      }`}
+                      onClick={() => setSelectedExam(exam.id)}
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <h3 className="font-medium text-gray-900">Exam #{exam.id}</h3>
+                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                          exam.status === 'InProgress' 
+                            ? 'bg-green-100 text-green-800'
+                            : exam.status === 'Completed'
+                            ? 'bg-blue-100 text-blue-800'
+                            : 'bg-gray-100 text-gray-800'
+                        }`}>
+                          {exam.status}
+                        </span>
+                      </div>
+                      
+                      <div className="space-y-2 text-sm text-gray-500">
+                        <div className="flex items-center gap-1">
+                          <Users className="w-4 h-4" />
+                          <span>Examinee: {exam.examinee_name || 'Unknown'}</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <Clock className="w-4 h-4" />
+                          <span>Created: {new Date(exam.created_at).toLocaleDateString()}</span>
+                        </div>
+                        {exam.proctor_name && (
+                          <div className="flex items-center gap-1">
+                            <Monitor className="w-4 h-4" />
+                            <span>Proctor: {exam.proctor_name}</span>
+                          </div>
+                        )}
+                      </div>
+                      
+                      {examResults[exam.id]?.submitted && (
+                        <div className="flex items-center gap-1 mt-2 text-green-600">
+                          <CheckCircle className="w-4 h-4" />
+                          <span className="text-sm">
+                            Results submitted: {examResults[exam.id].passed ? 'Passed' : 'Failed'}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  ))
+                )}
               </div>
             </div>
           </div>
@@ -179,55 +308,87 @@ export const ProctorExam: React.FC<WalletConnectionProps> = (props) => {
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                       <div className="bg-primary/10 rounded-lg p-4 text-center">
                         <Users className="w-6 h-6 text-primary mx-auto mb-2" />
-                        <p className="text-2xl font-bold text-primary">{selectedExamData.studentCount}</p>
-                        <p className="text-sm text-gray-500">Students</p>
+                        <p className="text-2xl font-bold text-primary">1</p>
+                        <p className="text-sm text-gray-500">Examinee</p>
                       </div>
                       <div className="bg-blue-100 rounded-lg p-4 text-center">
                         <Clock className="w-6 h-6 text-blue-600 mx-auto mb-2" />
-                        <p className="text-2xl font-bold text-blue-600">{selectedExamData.timeRemaining}</p>
-                        <p className="text-sm text-gray-500">Minutes Left</p>
+                        <p className="text-2xl font-bold text-blue-600">
+                          {selectedExamData ? new Date(selectedExamData.created_at).toLocaleDateString() : 'N/A'}
+                        </p>
+                        <p className="text-sm text-gray-500">Created</p>
                       </div>
                       <div className="bg-green-100 rounded-lg p-4 text-center">
                         <CheckCircle className="w-6 h-6 text-green-600 mx-auto mb-2" />
                         <p className="text-2xl font-bold text-green-600">
-                          {selectedExamData.studentCount - selectedExamData.alerts}
+                          {selectedExamData?.status === 'Completed' ? 'Yes' : 'No'}
                         </p>
-                        <p className="text-sm text-gray-500">No Issues</p>
+                        <p className="text-sm text-gray-500">Completed</p>
                       </div>
-                      <div className="bg-red-100 rounded-lg p-4 text-center">
-                        <AlertTriangle className="w-6 h-6 text-red-600 mx-auto mb-2" />
-                        <p className="text-2xl font-bold text-red-600">{selectedExamData.alerts}</p>
-                        <p className="text-sm text-gray-500">Alerts</p>
+                      <div className="bg-purple-100 rounded-lg p-4 text-center">
+                        <Monitor className="w-6 h-6 text-purple-600 mx-auto mb-2" />
+                        <p className="text-2xl font-bold text-purple-600">
+                          {selectedExamData?.proctor_name ? 'Yes' : 'No'}
+                        </p>
+                        <p className="text-sm text-gray-500">Proctored</p>
                       </div>
                     </div>
 
-                    {/* Recent Activity */}
+                    {/* Exam Details */}
                     <div>
-                      <h3 className="font-semibold text-gray-900 mb-4">Recent Activity</h3>
+                      <h3 className="font-semibold text-gray-900 mb-4">Exam Details</h3>
                       <div className="space-y-3">
-                        <div className="flex items-center gap-3 p-3 bg-yellow-50 rounded-lg">
-                          <AlertTriangle className="w-5 h-5 text-yellow-600" />
+                        <div className="flex items-center gap-3 p-3 bg-blue-50 rounded-lg">
+                          <Users className="w-5 h-5 text-blue-600" />
                           <div>
-                            <p className="text-sm font-medium">Suspicious activity detected</p>
-                            <p className="text-xs text-gray-500">Bob Smith - 2 minutes ago</p>
+                            <p className="text-sm font-medium">Examinee</p>
+                            <p className="text-xs text-gray-500">{selectedExamData?.examinee_name || 'Unknown'}</p>
                           </div>
                         </div>
                         <div className="flex items-center gap-3 p-3 bg-green-50 rounded-lg">
-                          <CheckCircle className="w-5 h-5 text-green-600" />
+                          <Clock className="w-5 h-5 text-green-600" />
                           <div>
-                            <p className="text-sm font-medium">Student completed exam</p>
-                            <p className="text-xs text-gray-500">Alice Johnson - 5 minutes ago</p>
+                            <p className="text-sm font-medium">Status</p>
+                            <p className="text-xs text-gray-500">{selectedExamData?.status || 'Unknown'}</p>
                           </div>
                         </div>
-                        <div className="flex items-center gap-3 p-3 bg-blue-50 rounded-lg">
-                          <Eye className="w-5 h-5 text-blue-600" />
+                        <div className="flex items-center gap-3 p-3 bg-purple-50 rounded-lg">
+                          <Monitor className="w-5 h-5 text-purple-600" />
                           <div>
-                            <p className="text-sm font-medium">Exam session started</p>
-                            <p className="text-xs text-gray-500">10 minutes ago</p>
+                            <p className="text-sm font-medium">Proctor</p>
+                            <p className="text-xs text-gray-500">{selectedExamData?.proctor_name || 'Not assigned'}</p>
                           </div>
                         </div>
                       </div>
                     </div>
+
+                    {/* Submit Results */}
+                    {selectedExamData && selectedExamData.status === 'Completed' && !examResults[selectedExamData.id]?.submitted && (
+                      <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                        <h4 className="font-semibold text-yellow-800 mb-3">Submit Exam Results</h4>
+                        <p className="text-sm text-yellow-700 mb-4">
+                          The exam has been completed. Please review and submit the results.
+                        </p>
+                        <div className="flex gap-2">
+                          <Button
+                            onClick={() => handleSubmitResults(selectedExamData.id, true)}
+                            className="bg-green-600 hover:bg-green-700"
+                            size="sm"
+                          >
+                            <CheckCircle className="w-4 h-4 mr-2" />
+                            Pass
+                          </Button>
+                          <Button
+                            onClick={() => handleSubmitResults(selectedExamData.id, false)}
+                            variant="destructive"
+                            size="sm"
+                          >
+                            <AlertTriangle className="w-4 h-4 mr-2" />
+                            Fail
+                          </Button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <div>

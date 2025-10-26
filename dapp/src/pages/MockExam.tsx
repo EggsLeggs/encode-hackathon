@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { BookOpen, Clock, CheckCircle, AlertCircle, Award } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { ContractDebugger } from '../components/ContractDebugger';
+import { CertificateCard } from '../components/CertificateCard';
 import { useWalletConnection } from '@/lib/wallet';
 import { useContract } from '../lib/useContract';
 import { verifyUserIdentity } from '../lib/verification';
@@ -37,6 +38,39 @@ const mockExams = {
           'All of the above'
         ],
         correct: 3
+      },
+      {
+        id: 3,
+        question: 'What programming language is used for Concordium smart contracts?',
+        options: [
+          'Solidity',
+          'Rust',
+          'JavaScript',
+          'Python'
+        ],
+        correct: 1
+      },
+      {
+        id: 4,
+        question: 'What is the main advantage of Concordium\'s identity layer?',
+        options: [
+          'Lower fees',
+          'Privacy compliance',
+          'Faster transactions',
+          'Higher throughput'
+        ],
+        correct: 1
+      },
+      {
+        id: 5,
+        question: 'What type of consensus mechanism does Concordium use?',
+        options: [
+          'Proof of Work',
+          'Proof of Stake',
+          'Proof of Burn',
+          'Delegated Proof of Stake'
+        ],
+        correct: 1
       }
     ]
   },
@@ -48,25 +82,25 @@ const mockExams = {
     questions: [
       {
         id: 1,
-        question: 'What programming language is used for Concordium smart contracts?',
+        question: 'What is a verifiable credential in Concordium?',
         options: [
-          'Solidity',
-          'Rust',
-          'JavaScript',
-          'Python'
+          'A type of cryptocurrency',
+          'A digital identity document that can be verified',
+          'A smart contract template',
+          'A transaction record'
         ],
         correct: 1
       },
       {
         id: 2,
-        question: 'What is the main advantage of Concordium\'s identity layer?',
+        question: 'What is Web3?',
         options: [
-          'Lower fees',
-          'Privacy compliance',
-          'Faster transactions',
-          'Higher throughput'
+          'The third version of the web',
+          'Decentralized internet',
+          'Blockchain-based applications',
+          'All of the above'
         ],
-        correct: 1
+        correct: 3
       }
     ]
   },
@@ -78,20 +112,20 @@ const mockExams = {
     questions: [
       {
         id: 1,
-        question: 'What is Web3?',
+        question: 'What is the Concordium identity layer used for?',
         options: [
-          'The third version of the web',
-          'Decentralized internet',
-          'Blockchain-based applications',
-          'All of the above'
+          'Mining rewards',
+          'Privacy compliance and regulatory requirements',
+          'Transaction fees',
+          'Block validation'
         ],
-        correct: 3
+        correct: 1
       }
     ]
   }
 };
 
-export const TakeExam: React.FC<WalletConnectionProps> = (props) => {
+export const MockExam: React.FC<WalletConnectionProps> = (props) => {
   const { account, connection } = useWalletConnection(props);
   const rpc = useGrpcClient(props.network);
   const { contract, isReady, error: contractError } = useContract(connection || undefined, rpc);
@@ -106,6 +140,8 @@ export const TakeExam: React.FC<WalletConnectionProps> = (props) => {
   const [score, setScore] = useState<number | null>(null);
   const [certificateMinted, setCertificateMinted] = useState(false);
   const [examineeName, setExamineeName] = useState('');
+  const [showCertificate, setShowCertificate] = useState(false);
+  const [isGeneratingVoucher, setIsGeneratingVoucher] = useState(false);
 
   // Debug function
   const handleDebugCIS2 = async () => {
@@ -113,15 +149,17 @@ export const TakeExam: React.FC<WalletConnectionProps> = (props) => {
     await contract.debugCIS2(account);
   };
 
-  // Fetch user exams when component mounts
+  // Fetch user exams when component mounts - simulate having registered exams
   useEffect(() => {
     const fetchUserExams = async () => {
-      if (!account || !contract || !isReady) return;
+      if (!account) return;
       
       setLoadingExams(true);
       try {
-        const exams = await contract.listUserExams(account);
-        setUserExams(exams);
+        // Simulate loading delay
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        // Mock user has registered for first 2 exams only
+        setUserExams([1, 2]);
       } catch (error) {
         console.error('Failed to fetch user exams:', error);
         toast.error('Failed to load your exams');
@@ -131,7 +169,7 @@ export const TakeExam: React.FC<WalletConnectionProps> = (props) => {
     };
 
     fetchUserExams();
-  }, [account, contract, isReady]);
+  }, [account]);
 
   useEffect(() => {
     if (examStarted && timeLeft > 0) {
@@ -179,21 +217,49 @@ export const TakeExam: React.FC<WalletConnectionProps> = (props) => {
     const exam = mockExams[selectedExamId as keyof typeof mockExams];
     if (!exam) return;
     
-    let correctAnswers = 0;
-    exam.questions.forEach(question => {
-      if (answers[question.id] === question.correct) {
-        correctAnswers++;
-      }
-    });
-    
-    const percentage = Math.round((correctAnswers / exam.questions.length) * 100);
-    setScore(percentage);
+    // Always pass the exam with 100% score
+    setScore(100);
     setExamSubmitted(true);
     setExamStarted(false);
   };
 
+  const handleGenerateCertVoucher = async () => {
+    if (!account) {
+      toast.error('Please connect your wallet first');
+      return;
+    }
+
+    setIsGeneratingVoucher(true);
+    try {
+      toast.info('Verifying identity for certificate voucher...');
+      const verifierUrl = 'http://localhost:8100';
+      const verificationResult = await verifyUserIdentity(verifierUrl, account);
+      const userName = verificationResult.userName;
+      
+      if (!userName) {
+        throw new Error('Identity verification failed');
+      }
+
+      // Set the verified name
+      setExamineeName(userName);
+      
+      toast.info('Generating certificate voucher...');
+      // Simulate voucher generation
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      setCertificateMinted(true);
+      setShowCertificate(true);
+      toast.success('Certificate voucher generated successfully!');
+    } catch (error) {
+      console.error('Voucher generation error:', error);
+      toast.error(`Failed to generate voucher: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setIsGeneratingVoucher(false);
+    }
+  };
+
   const handleMintCertificate = async () => {
-    if (!account || !contract || !isReady) {
+    if (!account) {
       toast.error('Contract not ready');
       return;
     }
@@ -215,8 +281,10 @@ export const TakeExam: React.FC<WalletConnectionProps> = (props) => {
       }
 
       toast.info('Minting completion certificate...');
-      await contract.mintCertificate(selectedExamId || 1, examineeName, account);
+      // Simulate certificate minting
+      await new Promise(resolve => setTimeout(resolve, 2000));
       setCertificateMinted(true);
+      setShowCertificate(true);
       toast.success('Completion certificate NFT minted successfully!');
     } catch (error) {
       console.error('Certificate minting error:', error);
@@ -262,6 +330,49 @@ export const TakeExam: React.FC<WalletConnectionProps> = (props) => {
     );
   }
 
+  if (showCertificate) {
+    const selectedExam = selectedExamId ? mockExams[selectedExamId as keyof typeof mockExams] : null;
+    const mockCertificate = {
+      tokenId: Math.floor(Math.random() * 1000000),
+      examineeName: examineeName || 'John Doe',
+      examId: selectedExamId || 1,
+      proctorAddress: '3JfE6tGtQ7KTr1VS1fZCNKsqgQii5YjFYNr4V5BcF3o6TQxUu',
+      mintedAt: Date.now(),
+      metadata: {
+        name: `${selectedExam?.title || 'Blockchain Summit 2024'} Certificate`,
+        description: `Certificate of completion for ${selectedExam?.title || 'Blockchain Summit 2024'} exam`,
+        image: 'https://via.placeholder.com/400x300/4F46E5/FFFFFF?text=Certificate'
+      }
+    };
+
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-purple-50 to-blue-50 flex items-center justify-center p-4">
+        <div className="max-w-2xl w-full">
+          <div className="text-center mb-8">
+            <h1 className="text-3xl font-bold text-gray-900 mb-4">Congratulations!</h1>
+            <p className="text-lg text-gray-600 mb-6">You have successfully completed the exam and verified your identity.</p>
+          </div>
+          
+          <CertificateCard 
+            certificate={mockCertificate}
+            onViewBlockchain={() => {
+              toast.info('This is a mock certificate - no blockchain transaction was made');
+            }}
+          />
+          
+          <div className="text-center mt-8 space-x-4">
+            <Button onClick={() => window.location.reload()} variant="outline">
+              Take Another Exam
+            </Button>
+            <Button onClick={() => window.location.href = '/'}>
+              Back to Home
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (examSubmitted) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-purple-50 to-blue-50 flex items-center justify-center">
@@ -274,34 +385,22 @@ export const TakeExam: React.FC<WalletConnectionProps> = (props) => {
               <p className="text-sm text-gray-500">Your Score</p>
             </div>
             <p className="text-gray-500 mb-6">
-              {score && score >= 70 
-                ? "Congratulations! You've passed the exam and can mint a completion certificate NFT."
-                : "You didn't pass this time. You can retake the exam after 24 hours."
-              }
+              Congratulations! You've passed the exam and can mint a completion certificate NFT.
             </p>
             
-            {score && score >= 70 && !certificateMinted && (
+            {!certificateMinted && (
               <div className="space-y-4 mb-6">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Enter your name for the certificate:
-                  </label>
-                  <input
-                    type="text"
-                    value={examineeName}
-                    onChange={(e) => setExamineeName(e.target.value)}
-                    placeholder="Your full name"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
-                  />
-                </div>
                 <Button
-                  onClick={handleMintCertificate}
-                  disabled={!examineeName.trim()}
-                  className="w-full bg-green-600 hover:bg-green-700"
+                  onClick={handleGenerateCertVoucher}
+                  disabled={isGeneratingVoucher}
+                  className="w-full bg-blue-600 hover:bg-blue-700"
                 >
                   <Award className="w-4 h-4 mr-2" />
-                  Mint Completion Certificate
+                  {isGeneratingVoucher ? 'Generating Voucher...' : 'Generate Cert Voucher'}
                 </Button>
+                <p className="text-xs text-gray-500 text-center">
+                  This will verify your identity using Concordium's identity layer and generate a certificate voucher
+                </p>
               </div>
             )}
 
@@ -342,18 +441,17 @@ export const TakeExam: React.FC<WalletConnectionProps> = (props) => {
             </p>
           </div>
 
-          {/* Contract Diagnostics */}
-          <ContractDebugger connection={connection || undefined} account={account} />
+          {/* Contract Diagnostics - Hidden for demo */}
+          {/* <ContractDebugger connection={connection || undefined} account={account} />
 
           <div className="text-center">
-            {/* Debug Button */}
             <button
               onClick={handleDebugCIS2}
               className="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors mb-6"
             >
               Debug CIS-2 (Check Console)
             </button>
-          </div>
+          </div> */}
 
           {loadingExams ? (
             <div className="bg-white/80 backdrop-blur-sm border border-neutral-200 rounded-xl shadow-lg p-8">

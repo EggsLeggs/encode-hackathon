@@ -1,0 +1,15 @@
+[
+  {
+    "type": "RevealAttribute",
+    "attributeTag": "firstName"
+  },
+  {
+    "type": "RevealAttribute",
+    "attributeTag": "lastName"
+  },
+  {
+    "type": "AttributeInSet",
+    "attributeTag": "role",
+    "set": ["proctor", "administrator"]
+  }
+]

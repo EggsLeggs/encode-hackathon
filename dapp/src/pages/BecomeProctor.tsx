@@ -1,23 +1,43 @@
 import React, { useState, useContext, createContext } from 'react';
-import { UserCheck, Shield, Award, CheckCircle, AlertCircle } from 'lucide-react';
+import { UserCheck, Shield, Award, CheckCircle, AlertCircle, Zap } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { useWalletConnection } from '../lib/wallet';
+import { useContract } from '../lib/useContract';
+import { toast } from 'sonner';
 import type { WalletConnectionProps } from '@concordium/react-components';
 
 // Simple context for proctor status
 const ProctorContext = createContext<{
   isProctor: boolean;
   setIsProctor: (value: boolean) => void;
+  proctorName: string;
+  setProctorName: (value: string) => void;
 }>({
   isProctor: false,
-  setIsProctor: () => {}
+  setIsProctor: () => {},
+  proctorName: '',
+  setProctorName: () => {}
 });
 
 export const ProctorProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [isProctor, setIsProctor] = useState(false);
+  const [isProctor, setIsProctor] = useState(() => {
+    // Check localStorage for proctor status on initialization
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('isProctor') === 'true';
+    }
+    return false;
+  });
+  
+  const [proctorName, setProctorName] = useState(() => {
+    // Check localStorage for proctor name on initialization
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('proctorName') || '';
+    }
+    return '';
+  });
   
   return (
-    <ProctorContext.Provider value={{ isProctor, setIsProctor }}>
+    <ProctorContext.Provider value={{ isProctor, setIsProctor, proctorName, setProctorName }}>
       {children}
     </ProctorContext.Provider>
   );
@@ -27,7 +47,8 @@ export const useProctorStatus = () => useContext(ProctorContext);
 
 export const BecomeProctor: React.FC<WalletConnectionProps> = (props) => {
   const { account } = useWalletConnection(props);
-  const { isProctor, setIsProctor } = useProctorStatus();
+  const { contract, isReady, error: contractError } = useContract();
+  const { isProctor, setIsProctor, proctorName: contextProctorName, setProctorName: setContextProctorName } = useProctorStatus();
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -37,6 +58,8 @@ export const BecomeProctor: React.FC<WalletConnectionProps> = (props) => {
   const [isApplying, setIsApplying] = useState(false);
   const [applicationSubmitted, setApplicationSubmitted] = useState(false);
   const [badgeIssued, setBadgeIssued] = useState(false);
+  const [isQuickProctor, setIsQuickProctor] = useState(false);
+  const [proctorName, setProctorName] = useState(contextProctorName || '');
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -46,29 +69,95 @@ export const BecomeProctor: React.FC<WalletConnectionProps> = (props) => {
     }));
   };
 
-  const handleSubmitApplication = async () => {
+  const handleQuickProctor = async () => {
     if (!account) {
-      alert('Please connect your wallet first');
+      toast.error('Please connect your wallet first');
+      return;
+    }
+
+    if (!proctorName.trim()) {
+      toast.error('Please enter your name');
       return;
     }
 
     setIsApplying(true);
-    // Simulate application process
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    setApplicationSubmitted(true);
-    setIsApplying(false);
+    try {
+      toast.info('Registering as proctor...');
+      
+      // Simulate a brief delay for demo purposes
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      
+      // For demo purposes, just mark as proctor without contract interaction
+      setIsProctor(true);
+      setBadgeIssued(true);
+      setContextProctorName(proctorName);
+      
+      // Store proctor status and name in localStorage for demo
+      localStorage.setItem('isProctor', 'true');
+      localStorage.setItem('proctorName', proctorName);
+      localStorage.setItem('proctorAccount', account);
+      
+      toast.success(`Welcome ${proctorName}! Proctor status granted! You can now monitor exams.`);
+    } catch (error) {
+      console.error('Proctor registration error:', error);
+      toast.error(`Failed to register as proctor: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setIsApplying(false);
+    }
+  };
+
+  const handleSubmitApplication = async () => {
+    if (!account) {
+      toast.error('Please connect your wallet first');
+      return;
+    }
+
+    if (!isReady || !contract) {
+      toast.error('Contract not ready. Please check contract address.');
+      return;
+    }
+
+    setIsApplying(true);
+    try {
+      toast.info('Submitting application...');
+      await contract.verifyProctorCredential(formData.name);
+      setApplicationSubmitted(true);
+      // Store proctor status in localStorage for demo
+      localStorage.setItem('isProctor', 'true');
+      toast.success('Application submitted successfully!');
+    } catch (error) {
+      console.error('Application error:', error);
+      toast.error(`Application failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setIsApplying(false);
+    }
   };
 
   const handleGetBadge = async () => {
     if (!account) {
-      alert('Please connect your wallet first');
+      toast.error('Please connect your wallet first');
       return;
     }
 
-    // Simulate NFT badge issuance
-    await new Promise(resolve => setTimeout(resolve, 1500));
+    // For demo purposes, just mark as proctor
     setIsProctor(true);
     setBadgeIssued(true);
+    // Store proctor status in localStorage for demo
+    localStorage.setItem('isProctor', 'true');
+    toast.success('Proctor badge issued!');
+  };
+
+  // Reset function for testing
+  const resetProctorStatus = () => {
+    setIsProctor(false);
+    setBadgeIssued(false);
+    setApplicationSubmitted(false);
+    setProctorName('');
+    setContextProctorName('');
+    localStorage.removeItem('isProctor');
+    localStorage.removeItem('proctorName');
+    localStorage.removeItem('proctorAccount');
+    toast.info('Proctor status reset');
   };
 
   if (!account) {
@@ -83,6 +172,8 @@ export const BecomeProctor: React.FC<WalletConnectionProps> = (props) => {
     );
   }
 
+  // Note: Contract check removed for demo purposes - quick proctor works without contract
+
   if (isProctor) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-purple-50 to-blue-50 flex items-center justify-center">
@@ -93,14 +184,23 @@ export const BecomeProctor: React.FC<WalletConnectionProps> = (props) => {
             </div>
             <h2 className="text-2xl font-bold text-gray-900 mb-4">Proctor Badge Earned!</h2>
             <p className="text-gray-500 mb-6">
-              Congratulations! You now have a Proctor NFT badge and can monitor exams.
+              Congratulations {contextProctorName}! You now have a Proctor NFT badge and can monitor exams.
             </p>
-            <Button 
-              onClick={() => window.location.href = '/proctor'}
-              className="w-full"
-            >
-              Go to Proctor Dashboard
-            </Button>
+            <div className="space-y-3">
+              <Button 
+                onClick={() => window.location.href = '/proctor'}
+                className="w-full"
+              >
+                Go to Proctor Dashboard
+              </Button>
+              <Button 
+                onClick={resetProctorStatus}
+                variant="outline"
+                className="w-full"
+              >
+                Reset Proctor Status (Demo)
+              </Button>
+            </div>
           </div>
         </div>
       </div>
@@ -148,9 +248,49 @@ export const BecomeProctor: React.FC<WalletConnectionProps> = (props) => {
           </div>
         </div>
 
+        {/* Quick Demo Proctor */}
+        <div className="bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-200 rounded-xl shadow-lg p-8 mb-8">
+          <div className="flex items-center gap-3 mb-4">
+            <Zap className="w-6 h-6 text-blue-600" />
+            <h2 className="text-xl font-bold text-gray-900">Quick Demo Proctor</h2>
+          </div>
+          <p className="text-gray-600 mb-4">
+            For demo purposes, you can instantly become a proctor by providing your name. This will grant you immediate access to the proctor dashboard.
+          </p>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Your Name
+              </label>
+              <input
+                type="text"
+                value={proctorName}
+                onChange={(e) => setProctorName(e.target.value)}
+                placeholder="Enter your full name"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+              />
+            </div>
+            <Button
+              onClick={handleQuickProctor}
+              disabled={isApplying || !proctorName.trim()}
+              className="w-full bg-blue-600 hover:bg-blue-700"
+              size="lg"
+            >
+              {isApplying ? (
+                <div className="flex items-center gap-2">
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  Registering as Proctor...
+                </div>
+              ) : (
+                'Become Proctor Instantly'
+              )}
+            </Button>
+          </div>
+        </div>
+
         {/* Application Form */}
         <div className="bg-white/80 backdrop-blur-sm border border-neutral-200 rounded-xl shadow-lg p-8">
-          <h2 className="text-2xl font-bold text-gray-900 mb-6">Proctor Application</h2>
+          <h2 className="text-2xl font-bold text-gray-900 mb-6">Full Proctor Application</h2>
           
           {!applicationSubmitted ? (
             <form onSubmit={(e) => { e.preventDefault(); handleSubmitApplication(); }} className="space-y-6">

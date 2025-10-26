@@ -2,12 +2,12 @@ import React, { useEffect } from 'react';
 import { Shield, Wallet } from 'lucide-react';
 import { Button } from './ui/button';
 import {
-    useConnection,
     useConnect,
     BrowserWalletConnector,
     persistentConnectorType,
 } from '@concordium/react-components';
 import type { WalletConnectionProps } from '@concordium/react-components';
+import { useWalletConnection } from '../lib/wallet';
 
 const BROWSER_WALLET = persistentConnectorType(BrowserWalletConnector.create);
 
@@ -17,11 +17,10 @@ export const WalletButton: React.FC<WalletConnectionProps> = (props) => {
         setActiveConnectorType,
         activeConnector,
         activeConnectorError,
-        connectedAccounts,
-        genesisHashes,
     } = props;
-    const { setConnection, account } = useConnection(connectedAccounts, genesisHashes);
+    const { account, setConnection } = useWalletConnection(props);
     const { connect, isConnecting, connectError } = useConnect(activeConnector, setConnection);
+    
 
     // Auto-connect when wallet type is selected
     useEffect(() => {
@@ -45,6 +44,7 @@ export const WalletButton: React.FC<WalletConnectionProps> = (props) => {
                         {truncateAddress(account)}
                     </span>
                 </div>
+                
                 <Button
                     variant="outline"
                     size="sm"
